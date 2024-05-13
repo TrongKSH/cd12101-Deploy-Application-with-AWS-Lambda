@@ -1,12 +1,18 @@
 import Axios from 'axios'
 import jsonwebtoken from 'jsonwebtoken'
 import { createLogger } from '../../utils/logger.mjs'
+import { JwtPayload } from '../../auth/JwtPayload'
+import { verify } from 'jsonwebtoken'
+import { CustomAuthorizerEvent, CustomAuthorizerResult } from 'aws-lambda'
 
 const logger = createLogger('auth')
 
 const jwksUrl = 'https://test-endpoint.auth0.com/.well-known/jwks.json'
 
-export async function handler(event) {
+export const handler = async (
+  event: CustomAuthorizerEvent
+): Promise<CustomAuthorizerResult> => {
+  logger.info('Authorizing a user', event.authorizationToken)
   try {
     const jwtToken = await verifyToken(event.authorizationToken)
 
@@ -47,7 +53,18 @@ async function verifyToken(authHeader) {
   const jwt = jsonwebtoken.decode(token, { complete: true })
 
   // TODO: Implement token verification
-  return undefined;
+  let authCert;
+  try {
+    const response = await Axios.get(jwksUrl);
+    //x5c: is the x509 certificate chain
+    const pemData = response['data']['keys'][0]['x5c'][0];
+    authCert = `-----BEGIN CERTIFICATE-----\n${pemData}\n-----END CERTIFICATE-----`;
+  }
+  catch (err) {
+    console.log("error in verifying token >> " + err);
+  }
+
+  return verify(token, authCert, { algorithms: ['RS256']}) as JwtPayload;
 }
 
 function getToken(authHeader) {
